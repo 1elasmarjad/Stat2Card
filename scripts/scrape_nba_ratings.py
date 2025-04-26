@@ -1,8 +1,10 @@
+from dataclasses import dataclass
 from enum import StrEnum
 import json
 import random
+import re
 from time import sleep
-from typing import Any
+from typing import Any, Literal
 from bs4 import BeautifulSoup, Tag
 from requests import Response, get
 from dotenv import load_dotenv
@@ -60,6 +62,90 @@ class Team(StrEnum):
     NEW_ORLEANS_PELICANS = "NOP"
 
 
+@dataclass
+class SeasonData:
+    year: str  # 2024-25 will be 2025
+    age: int
+    team: Team
+    league: str | Literal['NBA']
+    position: Literal['C', 'PF', 'SF', 'SG', 'PG']
+    games_played: int
+    games_started: int
+
+    minutes_per_game: float
+    field_goals_per_game: float
+    field_goal_attempts_per_game: float
+    three_point_field_goals_per_game: float
+    three_point_field_goal_attempts_per_game: float
+    two_point_field_goals_per_game: float
+    two_point_field_goal_attempts_per_game: float
+    free_throws_per_game: float
+    free_throw_attempts_per_game: float
+
+    field_goal_percentage: float
+    three_point_percentage: float
+    two_point_percentage: float
+    effective_field_goal_percentage: float
+    free_throw_percentage: float
+
+    offensive_rebounds_per_game: float
+    defensive_rebounds_per_game: float
+    total_rebounds_per_game: float
+    assists_per_game: float
+    steals_per_game: float
+    blocks_per_game: float
+    turnovers_per_game: float
+    personal_fouls_per_game: float
+    points_per_game: float
+
+    @staticmethod
+    def convert_data_stat(data_stat: str) -> str:
+        data_stat_to_attr: dict[str, str] = {
+            'age': 'age',
+            'pos': 'position',
+            'team_name_abbr': 'team',
+            'comp_name_abbr': 'league',
+            'pos': 'position',
+            'games': 'games_played',
+            'games_started': 'games_started',
+            'mp_per_g': 'minutes_per_game',
+            'fg_per_g': 'field_goals_per_game',
+            'fga_per_g': 'field_goal_attempts_per_game',
+            'fg_pct': 'field_goal_percentage',
+            'fg3_per_g': 'three_point_field_goals_per_game',
+            'fg3a_per_g': 'three_point_field_goal_attempts_per_game',
+            'fg3_pct': 'three_point_percentage',
+            'fg2_per_g': 'two_point_field_goals_per_game',
+            'fg2a_per_g': 'two_point_field_goal_attempts_per_game',
+            'fg2_pct': 'two_point_percentage',
+            'efg_pct': 'effective_field_goal_percentage',
+            'ft_per_g': 'free_throws_per_game',
+            'fta_per_g': 'free_throw_attempts_per_game',
+            'ft_pct': 'free_throw_percentage',
+            'orb_per_g': 'offensive_rebounds_per_game',
+            'drb_per_g': 'defensive_rebounds_per_game',
+            'trb_per_g': 'total_rebounds_per_game',
+            'ast_per_g': 'assists_per_game',
+            'stl_per_g': 'steals_per_game',
+            'blk_per_g': 'blocks_per_game',
+            'tov_per_g': 'turnovers_per_game',
+            'pf_per_g': 'personal_fouls_per_game',
+            'pts_per_g': 'points_per_game',
+        }
+
+        return data_stat_to_attr.get(data_stat, '')
+
+
+@dataclass
+class PlayerData:
+    name: str
+    team: Team
+    height_cm: int  # in centimeters
+    weight_kg: int  # in kilograms
+
+    seasons: dict[str, SeasonData]  # year -> SeasonData
+
+
 def serialize_sets(obj: Any) -> Any:
     """
     Custom JSON encoder to serialize sets as lists.
@@ -72,16 +158,16 @@ def serialize_sets(obj: Any) -> Any:
     return obj
 
 
-def main() -> None:
-    player_links: dict[Team, set[str]] = {}
+# def main() -> None:
+#     player_links: dict[Team, set[str]] = {}
 
-    # --- Retrieve the player links for each team ---
-    for team in tqdm(list(Team)[:2], desc="Retrieving player links", unit="team"):
-        player_links[team] = get_roster_player_links(team)
-        sleep(random.uniform(2.0, 5.0))
+#     # --- Retrieve the player links for each team ---
+#     for team in tqdm(list(Team)[:2], desc="Retrieving player links", unit="team"):
+#         player_links[team] = get_roster_player_links(team)
+#         sleep(random.uniform(2.0, 5.0))
 
-    print(json.dumps(player_links, indent=4, default=serialize_sets))
-    # TODO...
+#     print(json.dumps(player_links, indent=4, default=serialize_sets))
+#     # TODO...
 
 
 def get_roster_player_links(team: Team) -> set[str]:
@@ -94,7 +180,8 @@ def get_roster_player_links(team: Team) -> set[str]:
     response: Response = get(team_url, headers=HEADERS)
 
     if (response.status_code != 200):
-        raise ValueError(f"Failed retrieval - {team}. {response.status_code}")
+        raise ValueError(
+            f"Failed team retrieval - {team}. {response.status_code}")
 
     soup = BeautifulSoup(response.content, 'html.parser')
 
@@ -120,5 +207,86 @@ def get_roster_player_links(team: Team) -> set[str]:
     return player_links
 
 
-if __name__ == '__main__':
-    main()
+def get_player_data(player_url: str, team: Team) -> PlayerData:
+    """ Gets the player data for the given player URL.
+    :param player_url: The URL of the player to get data for.
+    :param team: The team the player is on.
+    :return: The player data for the given player URL.
+    """
+    response: Response = get(player_url, headers=HEADERS)
+
+    if (response.status_code != 200):
+        raise ValueError(
+            f"Failed player retrieval - {player_url}. {response.status_code}")
+
+    soup: BeautifulSoup = BeautifulSoup(response.content, 'html.parser')
+    table: BeautifulSoup = soup.find('table', id='per_game_stats')
+    raw_season_stats: list[Tag] = table.find_all('tbody')
+
+    # final processed data for season stats
+    processed_season_data: dict[str, SeasonData] = {}
+
+    for season in raw_season_stats:
+
+        processed_stats: dict[str, Any] = {}
+
+        for data in season.find_all('td'):
+            data_stat: str = data.get('data-stat')
+            if data_stat is None:
+                continue
+
+            data_stat_value: str = data.get_text()
+            attribute: str = SeasonData.convert_data_stat(data_stat)
+            if not attribute:
+                print(f"Attribute not found for data_stat: {data_stat}")
+                continue
+
+            if attribute == 'positions':
+                raw_positions: list[str] = data_stat_value.split('and')
+                data[attribute] = [pos.strip() for pos in raw_positions]
+
+            if data_stat_value.startswith('.'):
+                processed_stats[attribute] = float(data_stat_value[1:]) / 10
+
+            elif data_stat_value.isdigit():
+                processed_stats[attribute] = int(data_stat_value)
+
+            elif data_stat_value.isdecimal():
+                processed_stats[attribute] = float(data_stat_value)
+
+            else:
+                processed_stats[attribute] = data_stat_value
+
+        row_head: Tag = season.find('th')
+        if row_head is None:
+            raise ValueError("Row head not found.")
+
+        year: str = row_head.get('csk')
+        if year is None:
+            raise ValueError("Year not found.")
+
+        processed_stats['year'] = year
+
+        raw_season_stats = SeasonData(**processed_stats)
+        processed_season_data[year] = raw_season_stats
+
+    player_meta_tag: Tag = soup.find('div', id='meta')
+
+    name_h1: Tag = player_meta_tag.find('h1')
+    if name_h1 is None:
+        raise ValueError("Name not found.")
+
+    third_p: Tag = player_meta_tag.find_all('p')[2]
+    height_weight = re.findall(r'\((.*?)\)', third_p.get_text())[0].split(',')
+
+    height: str = height_weight[0].strip().replace('cm', '')
+    weight: str = height_weight[1].strip().replace(
+        'kg', '').replace('\xa0', '')
+
+    return PlayerData(
+        name=name_h1.get_text(),
+        team=team,
+        height_cm=int(height),
+        weight_kg=int(weight),
+        seasons=processed_season_data,
+    )
