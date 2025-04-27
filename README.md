@@ -6,7 +6,7 @@ For background, NBA 2K is a basketball game where players are rated based on the
 # The Process
 
 ## Obtaining Data
-- To obtain the real-life player stat data, we will extract data from websites like `basketball-reference`
+- To obtain the real-life player stat data, we will extract data from websites like `basketball-reference.com`
 - To obtain NBA 2k card ratings we can similary extract the data from popular websites like `www.nba2klab.com` and `2kratings.com`
 
 ## Training 
