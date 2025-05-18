@@ -1,7 +1,8 @@
 # Stat2Card • WIP 🏗️
 🏀 Turns real NBA player stats into 2K-style player cards using machine learning.
 
-For background, NBA 2K is a basketball game where players are rated based on their real-life performance. Stat2Card predicts these ratings using real NBA stats and machine learning.
+For background, NBA 2K is a basketball game where players are rated based on their real-life performance. 
+Stat2Card predicts these ratings using real NBA stats and machine learning.
 
 # The Process
 
